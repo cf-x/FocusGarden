@@ -11,6 +11,7 @@
 - 专注期间监听并轮询普通前台应用，立即隐藏不在白名单中的应用
 - 域名白名单，支持 Safari、Chrome、Edge、Arc、Brave 与 Opera 当前标签页守护
 - 可命名的多套专注模式，每套保存独立的应用和网页白名单
+- 八种可离线循环的工作背景音：白 / 粉 / 棕噪声、雨、溪流、海浪、森林与咖啡馆；支持独立试听、音量控制及随专注自动播放和停止
 - 可选的菜单栏实时剩余时间、拦截次数和快速回到主窗口
 - `⌘⇧F` 全局快捷键快速唤醒
 - macOS 正式登录项与独立后台守护助手
@@ -45,6 +46,25 @@ open dist/FocusGarden.app
 网页守护通过 macOS 浏览器自动化读取当前标签页，首次使用时需要允许森时控制对应浏览器。白名单匹配主域名及其子域名，例如添加 `notion.so` 也会允许 `www.notion.so`。它限制顶层浏览页面，不是系统级网络过滤器。
 
 后台助手会在主应用退出后继续执行已经开始的会话，并在会话结束时静默拉起菜单栏应用来结算奖励和发送通知。它不阻止用户在系统设置中关闭登录项，因此仍不是不可绕过的家长控制工具。
+
+## 背景音来源与致谢
+
+森时的背景音来自开源项目 [Moodist](https://github.com/remvze/moodist)（“Ambient sounds for focus and calm”）。感谢作者 [MAZE / remvze](https://github.com/remvze) 及 Moodist 的所有贡献者整理并开放这套声音资源。
+
+本项目使用了 Moodist 中以下音频。自然场景录音会先做离线响度归一化，再在应用内循环播放并进行实时音量平衡：
+
+| 森时场景 | Moodist 原始文件 |
+| --- | --- |
+| 粉噪声 | `public/sounds/noise/pink-noise.wav` |
+| 棕噪声 | `public/sounds/noise/brown-noise.wav` |
+| 白噪声 | `public/sounds/noise/white-noise.wav` |
+| 叶上细雨 | `public/sounds/rain/rain-on-leaves.mp3` |
+| 林间篝火 | `public/sounds/nature/campfire.mp3` |
+| 深夜海浪 | `public/sounds/nature/waves.mp3` |
+| 林间溪流 | `public/sounds/nature/river.mp3` |
+| 远处咖啡馆 | `public/sounds/places/cafe.mp3` |
+
+Moodist 采用 [MIT License](https://github.com/remvze/moodist/blob/main/LICENSE)。森时与 Moodist 没有隶属或官方合作关系；这里的署名是对上游开源工作的感谢与保留说明。
 
 要做成更强的版本，下一步应加入：浏览器扩展级网络过滤、中断成本与成就系统，以及可选的 iPhone 伴侣应用。
 

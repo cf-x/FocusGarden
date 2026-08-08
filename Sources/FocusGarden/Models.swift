@@ -67,6 +67,120 @@ struct FocusProfile: Codable, Identifiable, Equatable {
     }
 }
 
+enum AmbientSound: String, Codable, CaseIterable, Identifiable {
+    case pinkNoise
+    case rainOnLeaves = "rain"
+    case brownNoise
+    case campfire = "stream"
+    case ocean
+    case forestStream = "forest"
+    case whiteNoise
+    case cafe
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .pinkNoise: "粉噪声"
+        case .rainOnLeaves: "叶上细雨"
+        case .brownNoise: "棕噪声"
+        case .campfire: "林间篝火"
+        case .ocean: "深夜海浪"
+        case .forestStream: "林间溪流"
+        case .whiteNoise: "白噪声"
+        case .cafe: "远处咖啡馆"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .pinkNoise: "waveform"
+        case .rainOnLeaves: "cloud.rain.fill"
+        case .brownNoise: "speaker.wave.2.fill"
+        case .campfire: "flame.fill"
+        case .ocean: "moon.stars.fill"
+        case .forestStream: "water.waves"
+        case .whiteNoise: "dot.radiowaves.left.and.right"
+        case .cafe: "cup.and.saucer.fill"
+        }
+    }
+
+    var bestFor: String {
+        switch self {
+        case .pinkNoise: "阅读 · 编程"
+        case .rainOnLeaves: "日常工作"
+        case .brownNoise: "安静思考"
+        case .campfire: "写作 · 阅读"
+        case .ocean: "构思 · 放松"
+        case .forestStream: "疲劳恢复"
+        case .whiteNoise: "强力隔音"
+        case .cafe: "头脑风暴"
+        }
+    }
+
+    var spectrum: String {
+        switch self {
+        case .pinkNoise: "全频 · 每倍频程 −3 dB"
+        case .rainOnLeaves: "宽频 · 柔和叶面细雨"
+        case .brownNoise: "低频偏重 · 每倍频程 −6 dB"
+        case .campfire: "中低频 · 稀疏火焰爆裂声"
+        case .ocean: "低中频 · 约 50 Hz–2 kHz"
+        case .forestStream: "中高频 · 约 300 Hz–8 kHz"
+        case .whiteNoise: "全频 · 每 Hz 等功率"
+        case .cafe: "中频 · 约 200 Hz–4 kHz"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .pinkNoise:
+            "比白噪声柔和，兼顾声音遮蔽与长时间耐听，是深度工作的默认选择。"
+        case .rainOnLeaves:
+            "细雨落在树叶上的连续沙沙声，变化柔和，能盖住键盘和走动声。"
+        case .brownNoise:
+            "能量集中在低频，声音厚而不尖；适合对高频嘶声敏感的人。"
+        case .campfire:
+            "温暖的燃烧底声夹着稀疏爆裂，适合阅读与写作；精密任务时建议调低音量。"
+        case .ocean:
+            "缓慢起伏接近呼吸节奏，适合梳理想法；精密任务时可能略显催眠。"
+        case .forestStream:
+            "连续水声带少量细节，适合专注疲劳时恢复，但不宜开得太响。"
+        case .whiteNoise:
+            "高频更明显，最擅长掩蔽谈话和突发声，但长时间聆听更易疲劳。"
+        case .cafe:
+            "没有可辨认人声的轻微环境起伏，适合创意发散，不推荐背诵和写作。"
+        }
+    }
+
+    var audioResource: (name: String, extension: String) {
+        switch self {
+        case .pinkNoise: ("pink-noise", "wav")
+        case .rainOnLeaves: ("rain-on-leaves", "mp3")
+        case .brownNoise: ("brown-noise", "wav")
+        case .campfire: ("campfire", "mp3")
+        case .ocean: ("ocean", "mp3")
+        case .forestStream: ("stream", "mp3")
+        case .whiteNoise: ("white-noise", "wav")
+        case .cafe: ("cafe", "mp3")
+        }
+    }
+
+    // The source recordings have different mastering levels. These gains make
+    // switching scenes feel even without modifying the original open audio.
+    var playbackGain: Double {
+        switch self {
+        case .pinkNoise: 0.46
+        case .rainOnLeaves: 1.8
+        case .brownNoise: 0.26
+        case .campfire: 2.8
+        case .ocean: 2.0
+        case .forestStream: 2.0
+        case .whiteNoise: 1.05
+        case .cafe: 1.08
+        }
+    }
+}
+
 enum PlantKind: String, Codable, CaseIterable, Identifiable {
     case birch
     case maple

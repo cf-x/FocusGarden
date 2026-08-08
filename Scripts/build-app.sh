@@ -13,11 +13,13 @@ cd "$PROJECT_DIR"
 swift build -c release
 swift "$PROJECT_DIR/Scripts/generate-icon.swift"
 
+rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 mkdir -p "$GUARDIAN_CONTENTS_DIR/MacOS"
 cp "$BUILD_DIR/FocusGarden" "$CONTENTS_DIR/MacOS/FocusGarden"
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/Resources/FocusGarden.icns" "$CONTENTS_DIR/Resources/FocusGarden.icns"
+cp -R "$PROJECT_DIR/Resources/AmbientSounds" "$CONTENTS_DIR/Resources/AmbientSounds"
 cp "$BUILD_DIR/FocusGardenGuardian" "$GUARDIAN_CONTENTS_DIR/MacOS/FocusGardenGuardian"
 cp "$PROJECT_DIR/Resources/Guardian-Info.plist" "$GUARDIAN_CONTENTS_DIR/Info.plist"
 

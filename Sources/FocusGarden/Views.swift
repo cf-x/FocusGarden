@@ -3,6 +3,7 @@ import SwiftUI
 
 private enum AppSection: String, CaseIterable, Identifiable {
     case focus = "专注"
+    case sounds = "背景音"
     case garden = "花园"
     case history = "记录"
     case settings = "设置"
@@ -12,6 +13,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .focus: "timer"
+        case .sounds: "speaker.wave.2.fill"
         case .garden: "leaf.fill"
         case .history: "clock.arrow.circlepath"
         case .settings: "gearshape.fill"
@@ -48,6 +50,8 @@ struct RootView: View {
                     switch section {
                     case .focus:
                         FocusView(showingAbandonAlert: $showingAbandonAlert)
+                    case .sounds:
+                        BackgroundSoundView()
                     case .garden:
                         GardenView()
                     case .history:
@@ -140,6 +144,308 @@ struct RootView: View {
         .padding(24)
         .frame(width: 210)
         .background(Color.black.opacity(0.16))
+    }
+}
+
+private struct BackgroundSoundView: View {
+    @EnvironmentObject private var state: AppState
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 14)
+    ]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("背景音")
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                        Text("让声音遮住干扰，而不是抢走注意力。")
+                            .foregroundStyle(.white.opacity(0.48))
+                    }
+                    Spacer()
+                    if state.isAmbientSoundPlaying {
+                        Label("正在播放", systemImage: "waveform")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.mint)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 7)
+                            .background(Color.mint.opacity(0.12), in: Capsule())
+                    }
+                }
+
+                HStack(alignment: .top, spacing: 16) {
+                    nowPlayingCard
+                    listeningGuide
+                }
+
+                HStack {
+                    Text("选择一个声音场景")
+                        .font(.headline)
+                    Spacer()
+                    Text("点击卡片切换，播放时立即生效")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(AmbientSound.allCases) { sound in
+                        AmbientSoundCard(
+                            sound: sound,
+                            isSelected: sound == state.selectedAmbientSound
+                        ) {
+                            state.selectAmbientSound(sound)
+                        }
+                    }
+                }
+
+                Label(
+                    "森时只控制自身响度，无法判断耳机实际分贝。长时间使用时建议系统音量不超过 60%，每小时让耳朵安静休息一会儿。",
+                    systemImage: "ear.badge.checkmark"
+                )
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.38))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+            }
+            .padding(32)
+        }
+    }
+
+    private var nowPlayingCard: some View {
+        VStack(spacing: 18) {
+            HStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(ambientAccent.opacity(0.14))
+                        .frame(width: 92, height: 92)
+                    Circle()
+                        .stroke(ambientAccent.opacity(state.isAmbientSoundPlaying ? 0.28 : 0.12), lineWidth: 1)
+                        .frame(width: 72, height: 72)
+                    if state.isAmbientSoundPlaying {
+                        AmbientWaveform(color: ambientAccent)
+                            .frame(width: 44, height: 32)
+                    } else {
+                        Image(systemName: state.selectedAmbientSound.symbol)
+                            .font(.system(size: 29, weight: .medium))
+                            .foregroundStyle(ambientAccent)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(state.selectedAmbientSound.name)
+                        .font(.system(size: 21, weight: .bold, design: .rounded))
+                    Text(state.selectedAmbientSound.bestFor)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(ambientAccent)
+                    Text(state.selectedAmbientSound.spectrum)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.38))
+                }
+                Spacer()
+                Button {
+                    state.toggleAmbientSound()
+                } label: {
+                    Image(systemName: state.isAmbientSoundPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .frame(width: 52, height: 52)
+                        .background(ambientAccent, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(PressFeedbackButtonStyle())
+                .foregroundStyle(Color(red: 0.035, green: 0.12, blue: 0.10))
+            }
+
+            VStack(spacing: 13) {
+                HStack(spacing: 12) {
+                    Image(systemName: "speaker.fill")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.38))
+                    Slider(
+                        value: Binding(
+                            get: { state.ambientSoundVolume },
+                            set: { state.setAmbientSoundVolume($0) }
+                        ),
+                        in: 0...0.60
+                    )
+                    .tint(ambientAccent)
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.38))
+                    Text("\(Int((state.ambientSoundVolume / 0.60) * 100))%")
+                        .font(.system(.caption, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.48))
+                        .frame(width: 34, alignment: .trailing)
+                }
+
+                Toggle(
+                    "随专注自动播放与停止",
+                    isOn: Binding(
+                        get: { state.ambientSoundAutoPlay },
+                        set: { state.setAmbientSoundAutoPlay($0) }
+                    )
+                )
+                .font(.system(size: 13, weight: .medium))
+                .toggleStyle(.switch)
+                .tint(.mint)
+            }
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, minHeight: 220)
+        .background(Color.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(ambientAccent.opacity(0.15), lineWidth: 1)
+        )
+    }
+
+    private var listeningGuide: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Label("怎么选", systemImage: "sparkles")
+                .font(.headline)
+            ListeningGuideRow(
+                symbol: "chevron.left.forwardslash.chevron.right",
+                title: "深度工作",
+                detail: "先选粉噪声或细雨"
+            )
+            ListeningGuideRow(
+                symbol: "person.wave.2.fill",
+                title: "周围有人说话",
+                detail: "白噪声遮蔽更强，音量要低"
+            )
+            ListeningGuideRow(
+                symbol: "lightbulb.fill",
+                title: "构思与发散",
+                detail: "试试海浪或远处咖啡馆"
+            )
+            Spacer(minLength: 0)
+            Text("没有一种声音对所有人都更专注；如果开始留意声音本身，静音通常更好。")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.35))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(20)
+        .frame(width: 255)
+        .frame(minHeight: 220, alignment: .topLeading)
+        .background(Color.black.opacity(0.13), in: RoundedRectangle(cornerRadius: 22))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var ambientAccent: Color {
+        soundAccentColor(for: state.selectedAmbientSound)
+    }
+}
+
+private struct AmbientSoundCard: View {
+    let sound: AmbientSound
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: sound.symbol)
+                    .font(.system(size: 19, weight: .medium))
+                    .foregroundStyle(soundAccentColor(for: sound))
+                    .frame(width: 42, height: 42)
+                    .background(soundAccentColor(for: sound).opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(sound.name)
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.mint)
+                        }
+                    }
+                    Text(sound.bestFor)
+                        .font(.caption2)
+                        .foregroundStyle(soundAccentColor(for: sound).opacity(0.9))
+                    Text(sound.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.37))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Text(sound.spectrum)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.25))
+                        .padding(.top, 2)
+                }
+            }
+            .padding(15)
+            .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+            .background(
+                isSelected ? soundAccentColor(for: sound).opacity(0.09) : Color.white.opacity(0.04),
+                in: RoundedRectangle(cornerRadius: 17)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 17)
+                    .stroke(isSelected ? soundAccentColor(for: sound).opacity(0.32) : Color.white.opacity(0.055), lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 17))
+        }
+        .buttonStyle(PressFeedbackButtonStyle())
+        .foregroundStyle(.white)
+    }
+}
+
+private struct ListeningGuideRow: View {
+    let symbol: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.mint)
+                .frame(width: 28, height: 28)
+                .background(Color.mint.opacity(0.09), in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+    }
+}
+
+private struct AmbientWaveform: View {
+    let color: Color
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.12)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .center, spacing: 4) {
+                ForEach(0..<5, id: \.self) { index in
+                    let height = 10 + abs(sin(time * 2.4 + Double(index) * 0.82)) * 22
+                    Capsule()
+                        .fill(color)
+                        .frame(width: 4, height: height)
+                }
+            }
+        }
+    }
+}
+
+private func soundAccentColor(for sound: AmbientSound) -> Color {
+    switch sound {
+    case .pinkNoise: Color(red: 0.96, green: 0.55, blue: 0.69)
+    case .rainOnLeaves: Color(red: 0.42, green: 0.80, blue: 0.62)
+    case .brownNoise: Color(red: 0.76, green: 0.57, blue: 0.38)
+    case .campfire: Color(red: 0.96, green: 0.54, blue: 0.28)
+    case .ocean: Color(red: 0.42, green: 0.59, blue: 0.94)
+    case .forestStream: Color(red: 0.34, green: 0.86, blue: 0.83)
+    case .whiteNoise: Color(red: 0.82, green: 0.87, blue: 0.90)
+    case .cafe: Color(red: 0.91, green: 0.67, blue: 0.42)
     }
 }
 
