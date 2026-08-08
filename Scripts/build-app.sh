@@ -13,6 +13,7 @@ cd "$PROJECT_DIR"
 swift build -c release
 swift "$PROJECT_DIR/Scripts/generate-icon.swift"
 
+rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 mkdir -p "$GUARDIAN_CONTENTS_DIR/MacOS"
 cp "$BUILD_DIR/FocusGarden" "$CONTENTS_DIR/MacOS/FocusGarden"

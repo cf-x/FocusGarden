@@ -51,17 +51,17 @@ open dist/FocusGarden.app
 
 森时的背景音来自开源项目 [Moodist](https://github.com/remvze/moodist)（“Ambient sounds for focus and calm”）。感谢作者 [MAZE / remvze](https://github.com/remvze) 及 Moodist 的所有贡献者整理并开放这套声音资源。
 
-本项目使用了 Moodist 中以下音频，并在应用内以原文件循环播放，只根据各段录音的母带响度做实时音量平衡：
+本项目使用了 Moodist 中以下音频。自然场景录音会先做离线响度归一化，再在应用内循环播放并进行实时音量平衡：
 
 | 森时场景 | Moodist 原始文件 |
 | --- | --- |
 | 粉噪声 | `public/sounds/noise/pink-noise.wav` |
 | 棕噪声 | `public/sounds/noise/brown-noise.wav` |
 | 白噪声 | `public/sounds/noise/white-noise.wav` |
-| 檐下细雨 | `public/sounds/rain/rain-on-window.mp3` |
-| 林间溪流 | `public/sounds/nature/river.mp3` |
+| 叶上细雨 | `public/sounds/rain/rain-on-leaves.mp3` |
+| 林间篝火 | `public/sounds/nature/campfire.mp3` |
 | 深夜海浪 | `public/sounds/nature/waves.mp3` |
-| 松林微风 | `public/sounds/nature/wind-in-trees.mp3` |
+| 林间溪流 | `public/sounds/nature/river.mp3` |
 | 远处咖啡馆 | `public/sounds/places/cafe.mp3` |
 
 Moodist 采用 [MIT License](https://github.com/remvze/moodist/blob/main/LICENSE)。森时与 Moodist 没有隶属或官方合作关系；这里的署名是对上游开源工作的感谢与保留说明。

@@ -69,11 +69,11 @@ struct FocusProfile: Codable, Identifiable, Equatable {
 
 enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     case pinkNoise
-    case rain
+    case rainOnLeaves = "rain"
     case brownNoise
-    case stream
+    case campfire = "stream"
     case ocean
-    case forest
+    case forestStream = "forest"
     case whiteNoise
     case cafe
 
@@ -82,11 +82,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .pinkNoise: "粉噪声"
-        case .rain: "檐下细雨"
+        case .rainOnLeaves: "叶上细雨"
         case .brownNoise: "棕噪声"
-        case .stream: "林间溪流"
+        case .campfire: "林间篝火"
         case .ocean: "深夜海浪"
-        case .forest: "松林微风"
+        case .forestStream: "林间溪流"
         case .whiteNoise: "白噪声"
         case .cafe: "远处咖啡馆"
         }
@@ -95,11 +95,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .pinkNoise: "waveform"
-        case .rain: "cloud.rain.fill"
+        case .rainOnLeaves: "cloud.rain.fill"
         case .brownNoise: "speaker.wave.2.fill"
-        case .stream: "water.waves"
+        case .campfire: "flame.fill"
         case .ocean: "moon.stars.fill"
-        case .forest: "tree.fill"
+        case .forestStream: "water.waves"
         case .whiteNoise: "dot.radiowaves.left.and.right"
         case .cafe: "cup.and.saucer.fill"
         }
@@ -108,11 +108,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var bestFor: String {
         switch self {
         case .pinkNoise: "阅读 · 编程"
-        case .rain: "日常工作"
+        case .rainOnLeaves: "日常工作"
         case .brownNoise: "安静思考"
-        case .stream: "疲劳恢复"
+        case .campfire: "写作 · 阅读"
         case .ocean: "构思 · 放松"
-        case .forest: "轻量任务"
+        case .forestStream: "疲劳恢复"
         case .whiteNoise: "强力隔音"
         case .cafe: "头脑风暴"
         }
@@ -121,11 +121,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var spectrum: String {
         switch self {
         case .pinkNoise: "全频 · 每倍频程 −3 dB"
-        case .rain: "宽频 · 约 500 Hz–12 kHz"
+        case .rainOnLeaves: "宽频 · 柔和叶面细雨"
         case .brownNoise: "低频偏重 · 每倍频程 −6 dB"
-        case .stream: "中高频 · 约 300 Hz–8 kHz"
+        case .campfire: "中低频 · 稀疏火焰爆裂声"
         case .ocean: "低中频 · 约 50 Hz–2 kHz"
-        case .forest: "宽频 · 稀疏自然变化"
+        case .forestStream: "中高频 · 约 300 Hz–8 kHz"
         case .whiteNoise: "全频 · 每 Hz 等功率"
         case .cafe: "中频 · 约 200 Hz–4 kHz"
         }
@@ -135,16 +135,16 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .pinkNoise:
             "比白噪声柔和，兼顾声音遮蔽与长时间耐听，是深度工作的默认选择。"
-        case .rain:
-            "稳定、没有旋律，能盖住键盘和走动声，适合大多数工作。"
+        case .rainOnLeaves:
+            "细雨落在树叶上的连续沙沙声，变化柔和，能盖住键盘和走动声。"
         case .brownNoise:
             "能量集中在低频，声音厚而不尖；适合对高频嘶声敏感的人。"
-        case .stream:
-            "连续水声带少量细节，适合专注疲劳时恢复，但不宜开得太响。"
+        case .campfire:
+            "温暖的燃烧底声夹着稀疏爆裂，适合阅读与写作；精密任务时建议调低音量。"
         case .ocean:
             "缓慢起伏接近呼吸节奏，适合梳理想法；精密任务时可能略显催眠。"
-        case .forest:
-            "风声中只有稀疏鸟鸣，适合整理、阅读等压力较低的任务。"
+        case .forestStream:
+            "连续水声带少量细节，适合专注疲劳时恢复，但不宜开得太响。"
         case .whiteNoise:
             "高频更明显，最擅长掩蔽谈话和突发声，但长时间聆听更易疲劳。"
         case .cafe:
@@ -155,11 +155,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var audioResource: (name: String, extension: String) {
         switch self {
         case .pinkNoise: ("pink-noise", "wav")
-        case .rain: ("rain", "mp3")
+        case .rainOnLeaves: ("rain-on-leaves", "mp3")
         case .brownNoise: ("brown-noise", "wav")
-        case .stream: ("stream", "mp3")
+        case .campfire: ("campfire", "mp3")
         case .ocean: ("ocean", "mp3")
-        case .forest: ("forest", "mp3")
+        case .forestStream: ("stream", "mp3")
         case .whiteNoise: ("white-noise", "wav")
         case .cafe: ("cafe", "mp3")
         }
@@ -170,11 +170,11 @@ enum AmbientSound: String, Codable, CaseIterable, Identifiable {
     var playbackGain: Double {
         switch self {
         case .pinkNoise: 0.46
-        case .rain: 0.64
+        case .rainOnLeaves: 1.8
         case .brownNoise: 0.26
-        case .stream: 2.0
+        case .campfire: 2.8
         case .ocean: 2.0
-        case .forest: 0.82
+        case .forestStream: 2.0
         case .whiteNoise: 1.05
         case .cafe: 1.08
         }

@@ -439,11 +439,11 @@ private struct AmbientWaveform: View {
 private func soundAccentColor(for sound: AmbientSound) -> Color {
     switch sound {
     case .pinkNoise: Color(red: 0.96, green: 0.55, blue: 0.69)
-    case .rain: Color(red: 0.42, green: 0.76, blue: 0.96)
+    case .rainOnLeaves: Color(red: 0.42, green: 0.80, blue: 0.62)
     case .brownNoise: Color(red: 0.76, green: 0.57, blue: 0.38)
-    case .stream: Color(red: 0.34, green: 0.86, blue: 0.83)
+    case .campfire: Color(red: 0.96, green: 0.54, blue: 0.28)
     case .ocean: Color(red: 0.42, green: 0.59, blue: 0.94)
-    case .forest: Color(red: 0.40, green: 0.84, blue: 0.55)
+    case .forestStream: Color(red: 0.34, green: 0.86, blue: 0.83)
     case .whiteNoise: Color(red: 0.82, green: 0.87, blue: 0.90)
     case .cafe: Color(red: 0.91, green: 0.67, blue: 0.42)
     }
