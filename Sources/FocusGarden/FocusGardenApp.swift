@@ -1,8 +1,16 @@
+import AppKit
 import SwiftUI
 
 @main
 struct FocusGardenApp: App {
     @StateObject private var state = AppState()
+
+    init() {
+        if let iconURL = Bundle.main.url(forResource: "FocusGarden", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = icon
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -17,9 +25,17 @@ struct FocusGardenApp: App {
             MenuBarView()
                 .environmentObject(state)
         } label: {
-            Label(
-                state.isSessionActive ? state.formattedRemaining : "森时",
-                systemImage: state.isSessionActive ? "timer" : "leaf.fill"
+            HStack(spacing: 4) {
+                Image(systemName: state.isSessionActive ? "timer" : "leaf.fill")
+                if state.isSessionActive && state.showRemainingTimeInMenuBar {
+                    Text(state.formattedRemaining)
+                        .monospacedDigit()
+                }
+            }
+            .accessibilityLabel(
+                state.isSessionActive
+                    ? "森时，剩余 \(state.formattedRemaining)"
+                    : "森时"
             )
         }
         .menuBarExtraStyle(.window)

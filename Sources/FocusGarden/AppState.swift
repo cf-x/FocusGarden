@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     @Published private(set) var dewBalance = 0
     @Published private(set) var history: [FocusSessionRecord] = []
     @Published private(set) var notificationEnabled = true
+    @Published private(set) var showRemainingTimeInMenuBar = true
 
     let blocker = AppBlocker()
     let systemIntegration = SystemIntegrationManager()
@@ -36,6 +37,7 @@ final class AppState: ObservableObject {
         static let profiles = "focusGarden.profiles.v1"
         static let selectedProfileID = "focusGarden.selectedProfileID.v1"
         static let notificationEnabled = "focusGarden.notificationEnabled.v1"
+        static let showRemainingTimeInMenuBar = "focusGarden.showRemainingTimeInMenuBar.v1"
     }
 
     init(defaults: UserDefaults = .standard, resumeActiveSession: Bool = true) {
@@ -233,6 +235,11 @@ final class AppState: ObservableObject {
         }
     }
 
+    func setShowRemainingTimeInMenuBar(_ enabled: Bool) {
+        showRemainingTimeInMenuBar = enabled
+        defaults.set(enabled, forKey: Key.showRemainingTimeInMenuBar)
+    }
+
     func resetAllLocalData() {
         guard !isSessionActive else { return }
         allowedApps = []
@@ -241,11 +248,12 @@ final class AppState: ObservableObject {
         history = []
         dewBalance = 0
         notificationEnabled = true
+        showRemainingTimeInMenuBar = true
         selectedDuration = 25
         remainingSeconds = 25 * 60
         profiles = []
         selectedProfileID = nil
-        [Key.allowedApps, Key.allowedWebsites, Key.selectedDuration, Key.dewBalance, Key.history, Key.activeSession, Key.profiles, Key.selectedProfileID, Key.notificationEnabled]
+        [Key.allowedApps, Key.allowedWebsites, Key.selectedDuration, Key.dewBalance, Key.history, Key.activeSession, Key.profiles, Key.selectedProfileID, Key.notificationEnabled, Key.showRemainingTimeInMenuBar]
             .forEach(defaults.removeObject(forKey:))
     }
 
@@ -318,6 +326,9 @@ final class AppState: ObservableObject {
         notificationEnabled = defaults.object(forKey: Key.notificationEnabled) == nil
             ? true
             : defaults.bool(forKey: Key.notificationEnabled)
+        showRemainingTimeInMenuBar = defaults.object(forKey: Key.showRemainingTimeInMenuBar) == nil
+            ? true
+            : defaults.bool(forKey: Key.showRemainingTimeInMenuBar)
         if let data = defaults.data(forKey: Key.history),
            let decoded = try? JSONDecoder().decode([FocusSessionRecord].self, from: data) {
             history = decoded
