@@ -1225,9 +1225,11 @@ private struct SettingsToggleRow: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.38))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
         .tint(.mint)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
     }
 }
