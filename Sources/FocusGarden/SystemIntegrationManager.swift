@@ -26,13 +26,15 @@ final class SystemIntegrationManager: ObservableObject {
     }
 
     func setLaunchAtLogin(_ enabled: Bool) {
-        update(service: mainAppService, enabled: enabled, label: "登录时启动")
+        let errorMessage = update(service: mainAppService, enabled: enabled, label: "登录时启动")
         refresh()
+        if let errorMessage { statusMessage = errorMessage }
     }
 
     func setGuardianEnabled(_ enabled: Bool) {
-        update(service: guardianService, enabled: enabled, label: "后台守护")
+        let errorMessage = update(service: guardianService, enabled: enabled, label: "后台守护")
         refresh()
+        if let errorMessage { statusMessage = errorMessage }
     }
 
     func openLoginItemSettings() {
@@ -40,18 +42,18 @@ final class SystemIntegrationManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    private func update(service: SMAppService, enabled: Bool, label: String) {
+    private func update(service: SMAppService, enabled: Bool, label: String) -> String? {
         do {
             if enabled {
                 if service.status == .notRegistered || service.status == .notFound {
                     try service.register()
                 }
-            } else if service.status != .notRegistered {
+            } else if service.status == .enabled || service.status == .requiresApproval {
                 try service.unregister()
             }
-            statusMessage = nil
+            return nil
         } catch {
-            statusMessage = "\(label)设置失败：\(error.localizedDescription)"
+            return "\(label)设置失败：\(error.localizedDescription)"
         }
     }
 }

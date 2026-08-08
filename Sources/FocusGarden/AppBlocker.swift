@@ -9,8 +9,7 @@ final class AppBlocker: NSObject, ObservableObject {
     @Published private(set) var blockedWebsiteCount = 0
     @Published private(set) var websiteControlIssue: String?
 
-    private var allowedBundleIdentifiers = Set<String>()
-    private var allowedPaths = Set<String>()
+    private var allowedApplicationMatcher = AllowedApplicationMatcher(applications: [])
     private var allowedWebsites: [AllowedWebsite] = []
     private var enforcementTask: Task<Void, Never>?
     private var isObservingActivations = false
@@ -29,6 +28,12 @@ final class AppBlocker: NSObject, ObservableObject {
         case chromium
     }
 
+    private enum BrowserPageResult {
+        case noPage
+        case page(String)
+        case inaccessible(String)
+    }
+
     private let supportedBrowsers: [String: BrowserKind] = [
         "com.apple.Safari": .safari,
         "com.google.Chrome": .chromium,
@@ -40,8 +45,7 @@ final class AppBlocker: NSObject, ObservableObject {
 
     func start(allowing apps: [AllowedApp], websites: [AllowedWebsite]) {
         stop()
-        allowedBundleIdentifiers = Set(apps.compactMap(\.bundleIdentifier))
-        allowedPaths = Set(apps.map { URL(fileURLWithPath: $0.path).standardizedFileURL.path })
+        allowedApplicationMatcher = AllowedApplicationMatcher(applications: apps)
         allowedWebsites = websites
         blockedCount = 0
         blockedWebsiteCount = 0
@@ -78,8 +82,7 @@ final class AppBlocker: NSObject, ObservableObject {
             )
             isObservingActivations = false
         }
-        allowedBundleIdentifiers.removeAll()
-        allowedPaths.removeAll()
+        allowedApplicationMatcher = AllowedApplicationMatcher(applications: [])
         allowedWebsites.removeAll()
         lastNoticeAt.removeAll()
         websiteControlIssue = nil
@@ -124,24 +127,83 @@ final class AppBlocker: NSObject, ObservableObject {
         guard let browser = NSWorkspace.shared.frontmostApplication,
               let bundleIdentifier = browser.bundleIdentifier,
               let kind = supportedBrowsers[bundleIdentifier],
-              isAllowed(browser),
-              let rawURL = currentURL(for: bundleIdentifier, kind: kind),
-              let url = URL(string: rawURL),
-              !isInternallyAllowed(url),
-              let host = url.host?.lowercased(),
-              !allowedWebsites.contains(where: { $0.allows(host: host) }) else { return }
+              isAllowed(browser) else { return }
 
-        lastBlockedWebsiteHost = host
+        switch currentPage(for: bundleIdentifier, kind: kind) {
+        case .noPage:
+            return
+        case .inaccessible(let message):
+            websiteControlIssue = message
+            recordBlockedWebsite("无法读取当前标签页")
+            browser.hide()
+        case .page(let rawURL):
+            enforce(
+                rawURL: rawURL,
+                in: browser,
+                bundleIdentifier: bundleIdentifier,
+                kind: kind
+            )
+        }
+    }
+
+    private func enforce(
+        rawURL: String,
+        in browser: NSRunningApplication,
+        bundleIdentifier: String,
+        kind: BrowserKind
+    ) {
+        guard let url = URL(string: rawURL), let scheme = url.scheme?.lowercased() else {
+            blockWebsite("无效页面", in: browser, bundleIdentifier: bundleIdentifier, kind: kind)
+            return
+        }
+
+        if isInternallyAllowed(url) {
+            websiteControlIssue = nil
+            return
+        }
+
+        guard ["http", "https"].contains(scheme),
+              let host = url.host?.lowercased() else {
+            blockWebsite("\(scheme) 页面", in: browser, bundleIdentifier: bundleIdentifier, kind: kind)
+            return
+        }
+
+        guard !allowedWebsites.contains(where: { $0.allows(host: host) }) else {
+            websiteControlIssue = nil
+            return
+        }
+
+        blockWebsite(host, in: browser, bundleIdentifier: bundleIdentifier, kind: kind)
+    }
+
+    private func blockWebsite(
+        _ label: String,
+        in browser: NSRunningApplication,
+        bundleIdentifier: String,
+        kind: BrowserKind
+    ) {
+        recordBlockedWebsite(label)
+        if !redirectToBlank(bundleIdentifier: bundleIdentifier, kind: kind) {
+            browser.hide()
+        }
+    }
+
+    private func recordBlockedWebsite(_ label: String) {
+        let noticeKey = "website:\(label)"
+        let now = Date()
+        guard now.timeIntervalSince(lastNoticeAt[noticeKey] ?? .distantPast) > 2 else { return }
+
+        lastBlockedWebsiteHost = label
         blockedWebsiteCount += 1
-        redirectToBlank(bundleIdentifier: bundleIdentifier, kind: kind)
+        lastNoticeAt[noticeKey] = now
     }
 
     private func isInternallyAllowed(_ url: URL) -> Bool {
-        guard let scheme = url.scheme?.lowercased() else { return true }
+        guard let scheme = url.scheme?.lowercased() else { return false }
         return ["about", "chrome", "edge", "brave", "arc", "file"].contains(scheme)
     }
 
-    private func currentURL(for bundleIdentifier: String, kind: BrowserKind) -> String? {
+    private func currentPage(for bundleIdentifier: String, kind: BrowserKind) -> BrowserPageResult {
         let tabReference = kind == .safari ? "current tab of front window" : "active tab of front window"
         let source = """
         tell application id "\(bundleIdentifier)"
@@ -151,21 +213,25 @@ final class AppBlocker: NSObject, ObservableObject {
         """
 
         var error: NSDictionary?
-        let result = NSAppleScript(source: source)?.executeAndReturnError(&error)
+        guard let appleScript = NSAppleScript(source: source) else {
+            return .inaccessible("暂时无法创建浏览器控制脚本。")
+        }
+        let result = appleScript.executeAndReturnError(&error)
         if let error, error.count > 0 {
             let number = error["NSAppleScriptErrorNumber"] as? Int
-            websiteControlIssue = number == -1743
+            let message = number == -1743
                 ? "请允许森时控制当前浏览器，网页白名单才能生效。"
                 : "暂时无法读取当前浏览器标签页。"
-            return nil
+            return .inaccessible(message)
         }
 
         websiteControlIssue = nil
-        guard let value = result?.stringValue, !value.isEmpty else { return nil }
-        return value
+        guard let value = result.stringValue, !value.isEmpty else { return .noPage }
+        return .page(value)
     }
 
-    private func redirectToBlank(bundleIdentifier: String, kind: BrowserKind) {
+    @discardableResult
+    private func redirectToBlank(bundleIdentifier: String, kind: BrowserKind) -> Bool {
         let tabReference = kind == .safari ? "current tab of front window" : "active tab of front window"
         let source = """
         tell application id "\(bundleIdentifier)"
@@ -173,23 +239,33 @@ final class AppBlocker: NSObject, ObservableObject {
         end tell
         """
         var error: NSDictionary?
-        NSAppleScript(source: source)?.executeAndReturnError(&error)
+        guard let appleScript = NSAppleScript(source: source) else {
+            websiteControlIssue = "网页已识别，但暂时无法创建浏览器控制脚本。"
+            return false
+        }
+        appleScript.executeAndReturnError(&error)
         if let error, error.count > 0 {
             websiteControlIssue = "网页已识别，但暂时无法清空这个标签页。"
+            return false
         }
+        websiteControlIssue = nil
+        return true
     }
 
     private func isAllowed(_ app: NSRunningApplication) -> Bool {
-        if let bundleIdentifier = app.bundleIdentifier {
-            if safeSystemApps.contains(bundleIdentifier) { return true }
-            if allowedBundleIdentifiers.contains(bundleIdentifier) { return true }
-        }
+        if isTrustedSystemApp(app) { return true }
+        return allowedApplicationMatcher.allows(
+            bundleIdentifier: app.bundleIdentifier,
+            path: app.bundleURL?.path
+        )
+    }
 
-        if let path = app.bundleURL?.standardizedFileURL.path,
-           allowedPaths.contains(path) {
-            return true
-        }
-
-        return false
+    private func isTrustedSystemApp(_ app: NSRunningApplication) -> Bool {
+        guard let bundleIdentifier = app.bundleIdentifier,
+              safeSystemApps.contains(bundleIdentifier),
+              let path = app.bundleURL?.path else { return false }
+        let canonicalPath = AllowedApplicationMatcher.canonicalPath(path)
+        return canonicalPath.hasPrefix("/System/Library/")
+            || canonicalPath.hasPrefix("/System/Applications/")
     }
 }

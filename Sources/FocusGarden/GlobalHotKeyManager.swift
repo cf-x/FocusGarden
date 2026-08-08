@@ -36,7 +36,11 @@ final class GlobalHotKeyManager {
             0,
             &hotKeyReference
         )
-        return registerStatus == noErr
+        guard registerStatus == noErr else {
+            unregister()
+            return false
+        }
+        return true
     }
 
     func unregister() {
