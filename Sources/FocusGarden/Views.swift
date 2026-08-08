@@ -622,7 +622,15 @@ private struct GardenView: View {
                     }
                 }
 
-                ForestSceneView(sessions: state.completedSessions)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForestSceneView(sessions: state.completedSessions)
+                    Label(
+                        "每周一开启一片新森林；往期树木仍保留在下方“已经种下”和历史记录中。",
+                        systemImage: "calendar.badge.clock"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.38))
+                }
 
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -679,6 +687,30 @@ private struct ForestSceneView: View {
         (0.07, 0.82), (0.51, 0.75)
     ]
 
+    private var weekInterval: DateInterval {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = .current
+        return calendar.dateInterval(of: .weekOfYear, for: Date())
+            ?? DateInterval(start: Calendar.current.startOfDay(for: Date()), duration: 7 * 24 * 60 * 60)
+    }
+
+    private var weeklySessions: [FocusSessionRecord] {
+        sessions.filter { weekInterval.contains($0.startedAt) }
+    }
+
+    private var weeklyMinutes: Int {
+        weeklySessions.reduce(0) { $0 + $1.durationMinutes }
+    }
+
+    private var weekRangeText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = .current
+        formatter.dateFormat = "M月d日"
+        let inclusiveEnd = weekInterval.end.addingTimeInterval(-1)
+        return "\(formatter.string(from: weekInterval.start))–\(formatter.string(from: inclusiveEnd))"
+    }
+
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
@@ -728,20 +760,24 @@ private struct ForestSceneView: View {
                 }
                 .stroke(Color.cyan.opacity(0.18), style: StrokeStyle(lineWidth: 26, lineCap: .round))
 
-                ForEach(Array(sessions.prefix(12).enumerated()), id: \.element.id) { index, session in
-                    let position = positions[index]
+                ForEach(Array(weeklySessions.enumerated()), id: \.element.id) { index, session in
+                    let position = treePosition(at: index, count: weeklySessions.count)
                     let isFront = position.1 > 0.72
+                    let densityScale = treeScale(for: weeklySessions.count)
                     TreeArtwork(kind: session.plant)
-                        .frame(width: isFront ? 92 : 72, height: isFront ? 105 : 82)
+                        .frame(
+                            width: (isFront ? 92 : 72) * densityScale,
+                            height: (isFront ? 105 : 82) * densityScale
+                        )
                         .shadow(color: Color.black.opacity(0.16), radius: 6, y: 4)
                         .position(x: size.width * position.0, y: size.height * position.1)
                 }
 
-                if sessions.isEmpty {
+                if weeklySessions.isEmpty {
                     VStack(spacing: 7) {
                         Image(systemName: "sparkles")
                             .foregroundStyle(.mint.opacity(0.7))
-                        Text("完成专注后，树木会在这片土地上出现")
+                        Text("完成本周第一轮专注，种下第一棵树")
                             .font(.caption)
                             .foregroundStyle(.white.opacity(0.5))
                     }
@@ -749,10 +785,10 @@ private struct ForestSceneView: View {
 
                 VStack {
                     HStack {
-                        Label("我的森林", systemImage: "tree.fill")
+                        Label("本周森林", systemImage: "tree.fill")
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                         Spacer()
-                        Text("最近 \(min(12, sessions.count)) 棵")
+                        Text("\(weekRangeText) · \(weeklySessions.count) 棵 · \(weeklyMinutes) 分钟")
                             .font(.caption2)
                             .foregroundStyle(.white.opacity(0.45))
                     }
@@ -767,6 +803,26 @@ private struct ForestSceneView: View {
             )
         }
         .frame(height: 310)
+    }
+
+    private func treePosition(at index: Int, count: Int) -> (CGFloat, CGFloat) {
+        guard count > positions.count else { return positions[index] }
+
+        let columns = min(10, max(5, Int(ceil(sqrt(Double(count) * 1.7)))))
+        let rows = Int(ceil(Double(count) / Double(columns)))
+        let column = index % columns
+        let row = index / columns
+        let xStep = columns == 1 ? 0 : 0.84 / CGFloat(columns - 1)
+        let yStep = rows == 1 ? 0 : 0.29 / CGFloat(rows - 1)
+        let stagger = row.isMultiple(of: 2) ? 0 : min(0.025, xStep / 3)
+        let x = min(0.94, 0.07 + CGFloat(column) * xStep + stagger)
+        let y = rows == 1 ? 0.68 : 0.57 + CGFloat(row) * yStep
+        return (x, y)
+    }
+
+    private func treeScale(for count: Int) -> CGFloat {
+        guard count > positions.count else { return 1 }
+        return max(0.42, min(0.82, sqrt(12 / CGFloat(count))))
     }
 }
 
@@ -931,8 +987,17 @@ private struct SettingsView: View {
 
                 SystemSettingsSection(integration: state.systemIntegration)
 
-                settingsCard(title: "提醒与快捷键", symbol: "bell.badge") {
+                settingsCard(title: "菜单栏、提醒与快捷键", symbol: "menubar.rectangle") {
                     VStack(spacing: 0) {
+                        SettingsToggleRow(
+                            title: "在菜单栏显示剩余时间",
+                            detail: "专注时在叶子旁实时显示倒计时，例如 24:59。",
+                            isOn: Binding(
+                                get: { state.showRemainingTimeInMenuBar },
+                                set: { state.setShowRemainingTimeInMenuBar($0) }
+                            )
+                        )
+                        Divider().overlay(Color.white.opacity(0.07))
                         SettingsToggleRow(
                             title: "完成时显示系统通知",
                             detail: "只显示右上角横幅，不播放声音。",
@@ -1160,9 +1225,11 @@ private struct SettingsToggleRow: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.38))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
         .tint(.mint)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 8)
     }
 }
