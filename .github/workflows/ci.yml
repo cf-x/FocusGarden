@@ -12,10 +12,22 @@ jobs:
   build-and-test:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build
         run: swift build
       - name: Model smoke tests
         run: |
           swiftc Sources/FocusGarden/Models.swift SmokeTests/main.swift -o .build/model-smoke
           .build/model-smoke
+      - name: Package smoke test
+        run: |
+          ./Scripts/build-app.sh
+          plutil -lint dist/FocusGarden.app/Contents/Info.plist
+          plutil -lint dist/FocusGarden.app/Contents/Library/LoginItems/FocusGardenGuardian.app/Contents/Info.plist
+          test "$(plutil -extract CFBundleIdentifier raw dist/FocusGarden.app/Contents/Info.plist)" = "dev.local.focusgarden.mac"
+          test "$(plutil -extract CFBundleShortVersionString raw dist/FocusGarden.app/Contents/Info.plist)" = "$(plutil -extract CFBundleShortVersionString raw dist/FocusGarden.app/Contents/Library/LoginItems/FocusGardenGuardian.app/Contents/Info.plist)"
+          test "$(plutil -extract CFBundleVersion raw dist/FocusGarden.app/Contents/Info.plist)" = "$(plutil -extract CFBundleVersion raw dist/FocusGarden.app/Contents/Library/LoginItems/FocusGardenGuardian.app/Contents/Info.plist)"
+          test -f dist/FocusGarden.app/Contents/Resources/FocusGardenAppIcon-v9.icns
+          test "$(stat -f%z dist/FocusGarden.app/Contents/PkgInfo)" = "8"
+          test "$(find dist/FocusGarden.app/Contents/Resources/AmbientSounds -type f | wc -l | tr -d ' ')" = "8"
+          codesign --verify --deep --strict dist/FocusGarden.app

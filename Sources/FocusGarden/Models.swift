@@ -14,6 +14,42 @@ struct AllowedApp: Codable, Hashable, Identifiable {
     }
 }
 
+struct AllowedApplicationMatcher {
+    private struct Identity {
+        let bundleIdentifier: String?
+        let canonicalPath: String
+    }
+
+    private let identities: [Identity]
+
+    init(applications: [AllowedApp]) {
+        identities = applications.map {
+            Identity(
+                bundleIdentifier: $0.bundleIdentifier,
+                canonicalPath: Self.canonicalPath($0.path)
+            )
+        }
+    }
+
+    func allows(bundleIdentifier: String?, path: String?) -> Bool {
+        guard let path else { return false }
+        let candidatePath = Self.canonicalPath(path)
+
+        return identities.contains { identity in
+            guard identity.canonicalPath == candidatePath else { return false }
+            guard let expectedIdentifier = identity.bundleIdentifier else { return true }
+            return expectedIdentifier == bundleIdentifier
+        }
+    }
+
+    static func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: path)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+            .path
+    }
+}
+
 struct AllowedWebsite: Codable, Hashable, Identifiable {
     let id: String
     let host: String
@@ -36,7 +72,7 @@ struct AllowedWebsite: Codable, Hashable, Identifiable {
         if normalized.hasPrefix("www.") {
             normalized.removeFirst(4)
         }
-        guard !normalized.isEmpty else { return nil }
+        guard Self.isValidHost(normalized) else { return nil }
 
         self.host = normalized
         self.id = normalized
@@ -45,6 +81,34 @@ struct AllowedWebsite: Codable, Hashable, Identifiable {
     func allows(host candidate: String) -> Bool {
         let normalized = candidate.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
         return normalized == host || normalized.hasSuffix(".\(host)")
+    }
+
+    private static func isValidHost(_ host: String) -> Bool {
+        guard !host.isEmpty, host.count <= 253 else { return false }
+
+        if host.contains(":") {
+            let ipv6Characters = CharacterSet(charactersIn: "0123456789abcdef:.")
+            return host.unicodeScalars.allSatisfy(ipv6Characters.contains)
+        }
+
+        return host.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { label in
+            guard !label.isEmpty,
+                  label.count <= 63,
+                  label.first != "-",
+                  label.last != "-" else { return false }
+            return label.unicodeScalars.allSatisfy {
+                CharacterSet.alphanumerics.contains($0) || $0 == "-"
+            }
+        }
+    }
+}
+
+enum FocusDurationPolicy {
+    static let defaultMinutes = 25
+    static let validRange = 5...120
+
+    static func normalized(_ minutes: Int) -> Int {
+        min(validRange.upperBound, max(validRange.lowerBound, minutes))
     }
 }
 
@@ -291,11 +355,19 @@ struct PersistedActiveSession: Codable {
     let durationMinutes: Int
     let allowedApps: [AllowedApp]
     let allowedWebsites: [AllowedWebsite]?
+
+    var hasValidTiming: Bool {
+        guard FocusDurationPolicy.validRange.contains(durationMinutes) else { return false }
+        let expectedDuration = TimeInterval(durationMinutes * 60)
+        let persistedDuration = endsAt.timeIntervalSince(startedAt)
+        return persistedDuration > 0 && abs(persistedDuration - expectedDuration) < 1
+    }
 }
 
 enum RewardEngine {
     static func reward(for minutes: Int) -> Int {
-        let rarityBonus = switch minutes {
+        let normalizedMinutes = FocusDurationPolicy.normalized(minutes)
+        let rarityBonus = switch normalizedMinutes {
         case ..<20: 0
         case 20..<40: 5
         case 40..<60: 12
@@ -303,11 +375,11 @@ enum RewardEngine {
         case 90..<120: 45
         default: 70
         }
-        return max(5, minutes * 2 + rarityBonus)
+        return normalizedMinutes * 2 + rarityBonus
     }
 
     static func plant(for minutes: Int) -> PlantKind {
-        switch minutes {
+        switch FocusDurationPolicy.normalized(minutes) {
         case ..<20: .birch
         case 20..<40: .maple
         case 40..<60: .cedar

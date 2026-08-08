@@ -32,6 +32,7 @@ final class AppState: ObservableObject {
     private var endsAt: Date?
     private var tickerTask: Task<Void, Never>?
     private var sessionControlsAmbientSound = false
+    private let maximumDewBalance = 1_000_000_000
 
     private enum Key {
         static let allowedApps = "focusGarden.allowedApps.v1"
@@ -95,7 +96,7 @@ final class AppState: ObservableObject {
 
     func setDuration(_ minutes: Int) {
         guard !isSessionActive else { return }
-        selectedDuration = min(120, max(5, minutes))
+        selectedDuration = FocusDurationPolicy.normalized(minutes)
         remainingSeconds = selectedDuration * 60
         defaults.set(selectedDuration, forKey: Key.selectedDuration)
     }
@@ -121,7 +122,7 @@ final class AppState: ObservableObject {
             let app = AllowedApp(
                 name: name,
                 bundleIdentifier: bundle?.bundleIdentifier,
-                path: url.standardizedFileURL.path
+                path: AllowedApplicationMatcher.canonicalPath(url.path)
             )
             if !allowedApps.contains(where: { $0.id == app.id }) {
                 allowedApps.append(app)
@@ -263,7 +264,7 @@ final class AppState: ObservableObject {
     }
 
     func setAmbientSoundVolume(_ volume: Double) {
-        ambientSoundVolume = min(0.60, max(0, volume))
+        ambientSoundVolume = volume.isFinite ? min(0.60, max(0, volume)) : 0.28
         defaults.set(ambientSoundVolume, forKey: Key.ambientSoundVolume)
         ambientSoundPlayer.setVolume(ambientSoundVolume)
     }
@@ -271,10 +272,16 @@ final class AppState: ObservableObject {
     func setAmbientSoundAutoPlay(_ enabled: Bool) {
         ambientSoundAutoPlay = enabled
         defaults.set(enabled, forKey: Key.ambientSoundAutoPlay)
-        if isSessionActive {
-            sessionControlsAmbientSound = enabled
-            if enabled {
-                playAmbientSound()
+        guard isSessionActive else { return }
+
+        if enabled {
+            sessionControlsAmbientSound = true
+            playAmbientSound()
+        } else {
+            let shouldStopSessionSound = sessionControlsAmbientSound
+            sessionControlsAmbientSound = false
+            if shouldStopSessionSound {
+                stopAmbientSound()
             }
         }
     }
@@ -316,6 +323,7 @@ final class AppState: ObservableObject {
         selectedProfileID = nil
         [Key.allowedApps, Key.allowedWebsites, Key.selectedDuration, Key.dewBalance, Key.history, Key.activeSession, Key.profiles, Key.selectedProfileID, Key.notificationEnabled, Key.showRemainingTimeInMenuBar, Key.selectedAmbientSound, Key.ambientSoundVolume, Key.ambientSoundAutoPlay]
             .forEach(defaults.removeObject(forKey:))
+        loadProfilesOrMigrateLegacyConfiguration()
     }
 
     private func startTicker() {
@@ -331,7 +339,8 @@ final class AppState: ObservableObject {
 
     private func tick() {
         guard isSessionActive, let endsAt else { return }
-        remainingSeconds = max(0, Int(ceil(endsAt.timeIntervalSinceNow)))
+        let totalSeconds = currentDurationMinutes * 60
+        remainingSeconds = min(totalSeconds, max(0, Int(ceil(endsAt.timeIntervalSinceNow))))
         if remainingSeconds == 0 {
             completeSession()
         }
@@ -348,7 +357,7 @@ final class AppState: ObservableObject {
             plant: RewardEngine.plant(for: currentDurationMinutes)
         )
         history.insert(record, at: 0)
-        dewBalance += reward
+        dewBalance = min(maximumDewBalance, dewBalance + reward)
         persistHistory()
         defaults.set(dewBalance, forKey: Key.dewBalance)
         endActiveState()
@@ -386,8 +395,10 @@ final class AppState: ObservableObject {
             allowedWebsites = decoded
         }
         let storedDuration = defaults.integer(forKey: Key.selectedDuration)
-        selectedDuration = storedDuration == 0 ? 25 : storedDuration
-        dewBalance = defaults.integer(forKey: Key.dewBalance)
+        selectedDuration = storedDuration == 0
+            ? FocusDurationPolicy.defaultMinutes
+            : FocusDurationPolicy.normalized(storedDuration)
+        dewBalance = min(maximumDewBalance, max(0, defaults.integer(forKey: Key.dewBalance)))
         notificationEnabled = defaults.object(forKey: Key.notificationEnabled) == nil
             ? true
             : defaults.bool(forKey: Key.notificationEnabled)
@@ -396,22 +407,31 @@ final class AppState: ObservableObject {
             : defaults.bool(forKey: Key.showRemainingTimeInMenuBar)
         selectedAmbientSound = defaults.string(forKey: Key.selectedAmbientSound)
             .flatMap(AmbientSound.init(rawValue:)) ?? .pinkNoise
+        let storedAmbientSoundVolume = defaults.double(forKey: Key.ambientSoundVolume)
         ambientSoundVolume = defaults.object(forKey: Key.ambientSoundVolume) == nil
+            || !storedAmbientSoundVolume.isFinite
             ? 0.28
-            : min(0.60, max(0, defaults.double(forKey: Key.ambientSoundVolume)))
+            : min(0.60, max(0, storedAmbientSoundVolume))
         ambientSoundAutoPlay = defaults.object(forKey: Key.ambientSoundAutoPlay) == nil
             ? true
             : defaults.bool(forKey: Key.ambientSoundAutoPlay)
         if let data = defaults.data(forKey: Key.history),
            let decoded = try? JSONDecoder().decode([FocusSessionRecord].self, from: data) {
-            history = decoded
+            history = decoded.filter {
+                FocusDurationPolicy.validRange.contains($0.durationMinutes)
+                    && $0.earnedDew >= 0
+            }
         }
         loadProfilesOrMigrateLegacyConfiguration()
     }
 
     private func restoreActiveSessionIfNeeded() {
-        guard let data = defaults.data(forKey: Key.activeSession),
-              let active = try? JSONDecoder().decode(PersistedActiveSession.self, from: data) else { return }
+        guard let data = defaults.data(forKey: Key.activeSession) else { return }
+        guard let active = try? JSONDecoder().decode(PersistedActiveSession.self, from: data),
+              active.hasValidTiming else {
+            defaults.removeObject(forKey: Key.activeSession)
+            return
+        }
 
         if active.endsAt <= Date() {
             sessionStartedAt = active.startedAt
@@ -426,7 +446,10 @@ final class AppState: ObservableObject {
         sessionStartedAt = active.startedAt
         currentDurationMinutes = active.durationMinutes
         endsAt = active.endsAt
-        remainingSeconds = max(1, Int(ceil(active.endsAt.timeIntervalSinceNow)))
+        remainingSeconds = min(
+            active.durationMinutes * 60,
+            max(1, Int(ceil(active.endsAt.timeIntervalSinceNow)))
+        )
         isSessionActive = true
         blocker.start(allowing: allowedApps, websites: allowedWebsites)
         sessionControlsAmbientSound = ambientSoundAutoPlay

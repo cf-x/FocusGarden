@@ -78,7 +78,7 @@ canvas.unlockFocus()
 let scriptURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
 let projectURL = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
 let iconsetURL = projectURL.appendingPathComponent(".build/FocusGarden.iconset")
-let outputURL = projectURL.appendingPathComponent("Resources/FocusGarden.icns")
+let outputURL = projectURL.appendingPathComponent("Resources/FocusGardenAppIcon-v9.icns")
 
 try? FileManager.default.removeItem(at: iconsetURL)
 try FileManager.default.createDirectory(at: iconsetURL, withIntermediateDirectories: true)

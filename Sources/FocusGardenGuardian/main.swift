@@ -19,24 +19,35 @@ private struct GuardianAllowedWebsite: Codable {
     }
 }
 
+private struct GuardianApplicationIdentity {
+    let bundleIdentifier: String?
+    let canonicalPath: String
+}
+
 private struct GuardianSession: Codable {
     let startedAt: Date
     let endsAt: Date
     let durationMinutes: Int
     let allowedApps: [GuardianAllowedApp]
     let allowedWebsites: [GuardianAllowedWebsite]?
+
+    var hasValidTiming: Bool {
+        guard (5...120).contains(durationMinutes) else { return false }
+        let expectedDuration = TimeInterval(durationMinutes * 60)
+        let persistedDuration = endsAt.timeIntervalSince(startedAt)
+        return persistedDuration > 0 && abs(persistedDuration - expectedDuration) < 1
+    }
 }
 
 @MainActor
 private final class FocusGuardian {
-    private let preferences = UserDefaults(suiteName: "dev.local.focusgarden")!
+    private let mainBundleIdentifier = "dev.local.focusgarden.mac"
+    private let preferences = UserDefaults(suiteName: "dev.local.focusgarden.mac")!
     private let hotKey = GuardianHotKey()
     private var timer: Timer?
     private var lastHandledEndDate: Date?
 
-    private let safeBundleIdentifiers: Set<String> = [
-        "dev.local.focusgarden",
-        "dev.local.focusgarden.guardian",
+    private let safeSystemBundleIdentifiers: Set<String> = [
         "com.apple.finder",
         "com.apple.dock",
         "com.apple.systemuiserver",
@@ -47,6 +58,12 @@ private final class FocusGuardian {
     private enum BrowserKind: Equatable {
         case safari
         case chromium
+    }
+
+    private enum BrowserPageResult {
+        case noPage
+        case page(String)
+        case inaccessible
     }
 
     private let supportedBrowsers: [String: BrowserKind] = [
@@ -76,8 +93,12 @@ private final class FocusGuardian {
     }
 
     private func sessionSnapshot() -> GuardianSession? {
-        guard let data = preferences.data(forKey: "focusGarden.activeSession.v1"),
-              let session = try? JSONDecoder().decode(GuardianSession.self, from: data) else { return nil }
+        guard let data = preferences.data(forKey: "focusGarden.activeSession.v1") else { return nil }
+        guard let session = try? JSONDecoder().decode(GuardianSession.self, from: data),
+              session.hasValidTiming else {
+            preferences.removeObject(forKey: "focusGarden.activeSession.v1")
+            return nil
+        }
         return session
     }
 
@@ -88,9 +109,6 @@ private final class FocusGuardian {
         }
 
         if session.endsAt <= Date() {
-            let mainAppIsRunning = !NSRunningApplication
-                .runningApplications(withBundleIdentifier: "dev.local.focusgarden")
-                .isEmpty
             if !mainAppIsRunning, lastHandledEndDate != session.endsAt {
                 lastHandledEndDate = session.endsAt
                 openMainApplication(activating: false, backgroundCompletion: true)
@@ -98,59 +116,74 @@ private final class FocusGuardian {
             return
         }
 
-        let allowedIdentifiers = Set(session.allowedApps.compactMap(\.bundleIdentifier))
-        let allowedPaths = Set(session.allowedApps.map { URL(fileURLWithPath: $0.path).standardizedFileURL.path })
+        let allowedApplications = session.allowedApps.map {
+            GuardianApplicationIdentity(
+                bundleIdentifier: $0.bundleIdentifier,
+                canonicalPath: canonicalPath($0.path)
+            )
+        }
 
         for app in NSWorkspace.shared.runningApplications {
             guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
                   app.activationPolicy == .regular,
                   !app.isHidden,
-                  !isAllowed(app, identifiers: allowedIdentifiers, paths: allowedPaths) else { continue }
+                  !isAllowed(app, applications: allowedApplications) else { continue }
             app.hide()
         }
 
-        let mainAppIsRunning = !NSRunningApplication
-            .runningApplications(withBundleIdentifier: "dev.local.focusgarden")
-            .isEmpty
         if !mainAppIsRunning {
-            enforceWebsite(session.allowedWebsites ?? [], identifiers: allowedIdentifiers, paths: allowedPaths)
+            enforceWebsite(session.allowedWebsites ?? [], applications: allowedApplications)
         }
     }
 
     private func isAllowed(
         _ app: NSRunningApplication,
-        identifiers: Set<String>,
-        paths: Set<String>
+        applications: [GuardianApplicationIdentity]
     ) -> Bool {
-        if let identifier = app.bundleIdentifier,
-           safeBundleIdentifiers.contains(identifier) || identifiers.contains(identifier) {
-            return true
+        if isTrustedMainApplication(app) || isTrustedSystemApplication(app) { return true }
+        guard let candidatePath = app.bundleURL?.path else { return false }
+        let candidateCanonicalPath = canonicalPath(candidatePath)
+        return applications.contains { application in
+            guard application.canonicalPath == candidateCanonicalPath else { return false }
+            guard let expectedIdentifier = application.bundleIdentifier else { return true }
+            return expectedIdentifier == app.bundleIdentifier
         }
-        if let path = app.bundleURL?.standardizedFileURL.path, paths.contains(path) {
-            return true
-        }
-        return false
     }
 
     private func enforceWebsite(
         _ websites: [GuardianAllowedWebsite],
-        identifiers: Set<String>,
-        paths: Set<String>
+        applications: [GuardianApplicationIdentity]
     ) {
         guard let browser = NSWorkspace.shared.frontmostApplication,
               let identifier = browser.bundleIdentifier,
               let kind = supportedBrowsers[identifier],
-              isAllowed(browser, identifiers: identifiers, paths: paths),
-              let rawURL = currentURL(bundleIdentifier: identifier, kind: kind),
-              let url = URL(string: rawURL),
-              let scheme = url.scheme?.lowercased(),
-              !["about", "chrome", "edge", "brave", "arc", "file"].contains(scheme),
-              let host = url.host?.lowercased(),
-              !websites.contains(where: { $0.allows(host: host) }) else { return }
-        redirectToBlank(bundleIdentifier: identifier, kind: kind)
+              isAllowed(browser, applications: applications) else { return }
+
+        switch currentPage(bundleIdentifier: identifier, kind: kind) {
+        case .noPage:
+            return
+        case .inaccessible:
+            browser.hide()
+        case .page(let rawURL):
+            guard shouldBlock(rawURL: rawURL, websites: websites) else { return }
+            if !redirectToBlank(bundleIdentifier: identifier, kind: kind) {
+                browser.hide()
+            }
+        }
     }
 
-    private func currentURL(bundleIdentifier: String, kind: BrowserKind) -> String? {
+    private func shouldBlock(rawURL: String, websites: [GuardianAllowedWebsite]) -> Bool {
+        guard let url = URL(string: rawURL),
+              let scheme = url.scheme?.lowercased() else { return true }
+        if ["about", "chrome", "edge", "brave", "arc", "file"].contains(scheme) {
+            return false
+        }
+        guard ["http", "https"].contains(scheme),
+              let host = url.host?.lowercased() else { return true }
+        return !websites.contains(where: { $0.allows(host: host) })
+    }
+
+    private func currentPage(bundleIdentifier: String, kind: BrowserKind) -> BrowserPageResult {
         let tab = kind == .safari ? "current tab of front window" : "active tab of front window"
         let script = """
         tell application id "\(bundleIdentifier)"
@@ -159,12 +192,15 @@ private final class FocusGuardian {
         end tell
         """
         var error: NSDictionary?
-        guard let appleScript = NSAppleScript(source: script) else { return nil }
+        guard let appleScript = NSAppleScript(source: script) else { return .inaccessible }
         let value = appleScript.executeAndReturnError(&error).stringValue
-        return error == nil ? value : nil
+        if let error, error.count > 0 { return .inaccessible }
+        guard let value, !value.isEmpty else { return .noPage }
+        return .page(value)
     }
 
-    private func redirectToBlank(bundleIdentifier: String, kind: BrowserKind) {
+    @discardableResult
+    private func redirectToBlank(bundleIdentifier: String, kind: BrowserKind) -> Bool {
         let tab = kind == .safari ? "current tab of front window" : "active tab of front window"
         let script = """
         tell application id "\(bundleIdentifier)"
@@ -172,20 +208,54 @@ private final class FocusGuardian {
         end tell
         """
         var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
+        guard let appleScript = NSAppleScript(source: script) else { return false }
+        appleScript.executeAndReturnError(&error)
+        return error == nil || error?.count == 0
     }
 
     private func openMainApplication(activating: Bool, backgroundCompletion: Bool) {
-        var mainAppURL = Bundle.main.bundleURL
-        for _ in 0..<4 {
-            mainAppURL.deleteLastPathComponent()
-        }
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = activating
         if backgroundCompletion {
             configuration.arguments = ["--background-completion"]
         }
-        NSWorkspace.shared.openApplication(at: mainAppURL, configuration: configuration)
+        NSWorkspace.shared.openApplication(at: mainApplicationURL, configuration: configuration)
+    }
+
+    private var mainApplicationURL: URL {
+        var url = Bundle.main.bundleURL
+        for _ in 0..<4 {
+            url.deleteLastPathComponent()
+        }
+        return url
+    }
+
+    private var mainAppIsRunning: Bool {
+        NSRunningApplication.runningApplications(withBundleIdentifier: mainBundleIdentifier).contains(
+            where: isTrustedMainApplication
+        )
+    }
+
+    private func isTrustedMainApplication(_ app: NSRunningApplication) -> Bool {
+        guard app.bundleIdentifier == mainBundleIdentifier,
+              let path = app.bundleURL?.path else { return false }
+        return canonicalPath(path) == canonicalPath(mainApplicationURL.path)
+    }
+
+    private func isTrustedSystemApplication(_ app: NSRunningApplication) -> Bool {
+        guard let identifier = app.bundleIdentifier,
+              safeSystemBundleIdentifiers.contains(identifier),
+              let path = app.bundleURL?.path else { return false }
+        let trustedPath = canonicalPath(path)
+        return trustedPath.hasPrefix("/System/Library/")
+            || trustedPath.hasPrefix("/System/Applications/")
+    }
+
+    private func canonicalPath(_ path: String) -> String {
+        URL(fileURLWithPath: path)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+            .path
     }
 }
 

@@ -1370,6 +1370,7 @@ private struct SettingsView: View {
                                 }
                                 .buttonStyle(PressFeedbackButtonStyle())
                                 .foregroundStyle(.white.opacity(0.45))
+                                .disabled(state.isSessionActive)
                                 Button {
                                     state.deleteProfile(profile.id)
                                 } label: {
