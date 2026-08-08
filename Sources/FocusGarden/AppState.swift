@@ -18,14 +18,20 @@ final class AppState: ObservableObject {
     @Published private(set) var history: [FocusSessionRecord] = []
     @Published private(set) var notificationEnabled = true
     @Published private(set) var showRemainingTimeInMenuBar = true
+    @Published private(set) var selectedAmbientSound: AmbientSound = .pinkNoise
+    @Published private(set) var ambientSoundVolume = 0.28
+    @Published private(set) var ambientSoundAutoPlay = true
+    @Published private(set) var isAmbientSoundPlaying = false
 
     let blocker = AppBlocker()
     let systemIntegration = SystemIntegrationManager()
     let hotKeyManager = GlobalHotKeyManager()
+    let ambientSoundPlayer = AmbientSoundPlayer()
 
     private let defaults: UserDefaults
     private var endsAt: Date?
     private var tickerTask: Task<Void, Never>?
+    private var sessionControlsAmbientSound = false
 
     private enum Key {
         static let allowedApps = "focusGarden.allowedApps.v1"
@@ -38,6 +44,9 @@ final class AppState: ObservableObject {
         static let selectedProfileID = "focusGarden.selectedProfileID.v1"
         static let notificationEnabled = "focusGarden.notificationEnabled.v1"
         static let showRemainingTimeInMenuBar = "focusGarden.showRemainingTimeInMenuBar.v1"
+        static let selectedAmbientSound = "focusGarden.selectedAmbientSound.v1"
+        static let ambientSoundVolume = "focusGarden.ambientSoundVolume.v1"
+        static let ambientSoundAutoPlay = "focusGarden.ambientSoundAutoPlay.v1"
     }
 
     init(defaults: UserDefaults = .standard, resumeActiveSession: Bool = true) {
@@ -210,6 +219,10 @@ final class AppState: ObservableObject {
 
         persistActiveSession()
         blocker.start(allowing: allowedApps, websites: allowedWebsites)
+        sessionControlsAmbientSound = ambientSoundAutoPlay
+        if ambientSoundAutoPlay {
+            playAmbientSound()
+        }
         startTicker()
     }
 
@@ -240,6 +253,50 @@ final class AppState: ObservableObject {
         defaults.set(enabled, forKey: Key.showRemainingTimeInMenuBar)
     }
 
+    func selectAmbientSound(_ sound: AmbientSound) {
+        selectedAmbientSound = sound
+        defaults.set(sound.rawValue, forKey: Key.selectedAmbientSound)
+        if isAmbientSoundPlaying {
+            ambientSoundPlayer.play(sound, volume: ambientSoundVolume)
+            isAmbientSoundPlaying = ambientSoundPlayer.isPlaying
+        }
+    }
+
+    func setAmbientSoundVolume(_ volume: Double) {
+        ambientSoundVolume = min(0.60, max(0, volume))
+        defaults.set(ambientSoundVolume, forKey: Key.ambientSoundVolume)
+        ambientSoundPlayer.setVolume(ambientSoundVolume)
+    }
+
+    func setAmbientSoundAutoPlay(_ enabled: Bool) {
+        ambientSoundAutoPlay = enabled
+        defaults.set(enabled, forKey: Key.ambientSoundAutoPlay)
+        if isSessionActive {
+            sessionControlsAmbientSound = enabled
+            if enabled {
+                playAmbientSound()
+            }
+        }
+    }
+
+    func toggleAmbientSound() {
+        if isAmbientSoundPlaying {
+            stopAmbientSound()
+        } else {
+            playAmbientSound()
+        }
+    }
+
+    func playAmbientSound() {
+        ambientSoundPlayer.play(selectedAmbientSound, volume: ambientSoundVolume)
+        isAmbientSoundPlaying = ambientSoundPlayer.isPlaying
+    }
+
+    func stopAmbientSound() {
+        ambientSoundPlayer.stop()
+        isAmbientSoundPlaying = false
+    }
+
     func resetAllLocalData() {
         guard !isSessionActive else { return }
         allowedApps = []
@@ -249,11 +306,15 @@ final class AppState: ObservableObject {
         dewBalance = 0
         notificationEnabled = true
         showRemainingTimeInMenuBar = true
+        selectedAmbientSound = .pinkNoise
+        ambientSoundVolume = 0.28
+        ambientSoundAutoPlay = true
+        stopAmbientSound()
         selectedDuration = 25
         remainingSeconds = 25 * 60
         profiles = []
         selectedProfileID = nil
-        [Key.allowedApps, Key.allowedWebsites, Key.selectedDuration, Key.dewBalance, Key.history, Key.activeSession, Key.profiles, Key.selectedProfileID, Key.notificationEnabled, Key.showRemainingTimeInMenuBar]
+        [Key.allowedApps, Key.allowedWebsites, Key.selectedDuration, Key.dewBalance, Key.history, Key.activeSession, Key.profiles, Key.selectedProfileID, Key.notificationEnabled, Key.showRemainingTimeInMenuBar, Key.selectedAmbientSound, Key.ambientSoundVolume, Key.ambientSoundAutoPlay]
             .forEach(defaults.removeObject(forKey:))
     }
 
@@ -304,6 +365,10 @@ final class AppState: ObservableObject {
         tickerTask?.cancel()
         tickerTask = nil
         blocker.stop()
+        if sessionControlsAmbientSound {
+            stopAmbientSound()
+        }
+        sessionControlsAmbientSound = false
         isSessionActive = false
         sessionStartedAt = nil
         endsAt = nil
@@ -329,6 +394,14 @@ final class AppState: ObservableObject {
         showRemainingTimeInMenuBar = defaults.object(forKey: Key.showRemainingTimeInMenuBar) == nil
             ? true
             : defaults.bool(forKey: Key.showRemainingTimeInMenuBar)
+        selectedAmbientSound = defaults.string(forKey: Key.selectedAmbientSound)
+            .flatMap(AmbientSound.init(rawValue:)) ?? .pinkNoise
+        ambientSoundVolume = defaults.object(forKey: Key.ambientSoundVolume) == nil
+            ? 0.28
+            : min(0.60, max(0, defaults.double(forKey: Key.ambientSoundVolume)))
+        ambientSoundAutoPlay = defaults.object(forKey: Key.ambientSoundAutoPlay) == nil
+            ? true
+            : defaults.bool(forKey: Key.ambientSoundAutoPlay)
         if let data = defaults.data(forKey: Key.history),
            let decoded = try? JSONDecoder().decode([FocusSessionRecord].self, from: data) {
             history = decoded
@@ -356,6 +429,10 @@ final class AppState: ObservableObject {
         remainingSeconds = max(1, Int(ceil(active.endsAt.timeIntervalSinceNow)))
         isSessionActive = true
         blocker.start(allowing: allowedApps, websites: allowedWebsites)
+        sessionControlsAmbientSound = ambientSoundAutoPlay
+        if ambientSoundAutoPlay {
+            playAmbientSound()
+        }
         startTicker()
     }
 

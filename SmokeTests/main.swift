@@ -28,4 +28,8 @@ let profileRoundTrip = try JSONDecoder().decode(
 require(profileRoundTrip.name == "编程", "专注模式序列化失败")
 require(profileRoundTrip.allowedWebsites.first?.host == "example.com", "专注模式白名单保存失败")
 
-print("PASS: 域名、专注模式、树种迁移、时长映射与奖励规则")
+require(AmbientSound.allCases.count == 8, "背景音场景数量错误")
+require(Set(AmbientSound.allCases.map { $0.audioResource.name }).count == 8, "背景音资源名必须唯一")
+require(AmbientSound.allCases.allSatisfy { $0.playbackGain > 0 }, "背景音响度平衡参数无效")
+
+print("PASS: 域名、专注模式、树种迁移、时长映射、奖励规则与背景音配置")
