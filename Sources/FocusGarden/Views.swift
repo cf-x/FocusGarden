@@ -513,13 +513,13 @@ private struct FocusView: View {
                 Circle()
                     .stroke(Color.white.opacity(0.07), lineWidth: 12)
                 Circle()
-                    .trim(from: 0, to: state.isSessionActive ? state.progress : 0.04)
+                    .trim(from: 0, to: state.timerRingProgress)
                     .stroke(
                         AngularGradient(colors: [.mint, .teal, .cyan, .mint], center: .center),
                         style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .animation(.easeInOut(duration: 0.8), value: state.progress)
+                    .animation(.easeInOut(duration: 0.8), value: state.timerRingProgress)
 
                 VStack(spacing: 10) {
                     TreeArtwork(

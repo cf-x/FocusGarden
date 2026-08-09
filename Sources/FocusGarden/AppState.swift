@@ -74,6 +74,11 @@ final class AppState: ObservableObject {
         return min(1, max(0, 1 - Double(remainingSeconds) / Double(total)))
     }
 
+    var timerRingProgress: Double {
+        if isSessionActive { return progress }
+        return Double(selectedDuration) / Double(FocusDurationPolicy.validRange.upperBound)
+    }
+
     var projectedReward: Int {
         RewardEngine.reward(for: isSessionActive ? currentDurationMinutes : selectedDuration)
     }
